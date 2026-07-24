@@ -25,3 +25,12 @@ def format_value(value: float | str | None, decimals: int = 2) -> str:
     quantum = Decimal(1).scaleb(-decimals)
     rounded = Decimal(str(value)).quantize(quantum, rounding=ROUND_HALF_UP)
     return f"{rounded:.{decimals}f}"
+
+
+def format_value_with_unit(
+    value: float | str | None, unit: str, decimals: int = 0
+) -> str:
+    formatted = format_value(value, decimals)
+    if formatted == "—" or not unit:
+        return formatted
+    return f"{formatted} {unit}"

@@ -10,12 +10,18 @@ from PySide6.QtWidgets import (
 )
 
 from hwlogger.models.sensor import Sensor
-from hwlogger.utils.units import format_value
+from hwlogger.utils.units import format_value_with_unit
 
 HEADERS = [
-    "Запись", "Имя", "Исходное имя", "Источник", "Тип", "Значение", "Единица",
-    "Минимум", "Среднее", "Максимум", "Состояние", "ID / путь",
+    "Запись", "Имя", "Исходное имя", "Источник", "Тип", "Сейчас",
+    "Минимум", "Среднее", "Максимум", "Состояние", "Путь",
 ]
+TECHNICAL_COLUMNS = (2, 3, 4, 10)
+WIDTH_KEYS = {
+    0: "record", 1: "name", 2: "original_name", 3: "source", 4: "type",
+    5: "current", 6: "minimum", 7: "average", 8: "maximum",
+    9: "status", 10: "path",
+}
 
 
 class SensorTable(QTableWidget):
@@ -35,12 +41,14 @@ class SensorTable(QTableWidget):
         self.verticalHeader().setVisible(False)
         self.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.horizontalHeader().setStretchLastSection(False)
-        for column, width in enumerate((65, 180, 130, 120, 105, 90, 70, 90, 90, 90, 180, 320)):
+        for column, width in enumerate(
+            (54, 230, 130, 120, 105, 100, 100, 100, 100, 105, 320)
+        ):
             self.setColumnWidth(column, width)
         self.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.itemChanged.connect(self._item_changed)
 
-    def set_sensors(self, sensors: list[Sensor], decimals: int) -> None:
+    def set_sensors(self, sensors: list[Sensor], decimals: int = 0) -> None:
         sort_column = self.horizontalHeader().sortIndicatorSection()
         order = self.horizontalHeader().sortIndicatorOrder()
         self.setSortingEnabled(False)
@@ -60,18 +68,25 @@ class SensorTable(QTableWidget):
                 QTableWidgetItem(sensor.original_name),
                 QTableWidgetItem(sensor.source),
                 QTableWidgetItem(sensor.sensor_type.value),
-                QTableWidgetItem(format_value(sensor.value, decimals)),
-                QTableWidgetItem(sensor.unit),
-                QTableWidgetItem(format_value(stats.minimum, decimals)),
-                QTableWidgetItem(format_value(stats.average, decimals)),
-                QTableWidgetItem(format_value(stats.maximum, decimals)),
                 QTableWidgetItem(
-                    "Доступен" if sensor.available else f"Недоступен: {sensor.last_error}"
+                    format_value_with_unit(sensor.value, sensor.unit, decimals)
                 ),
+                QTableWidgetItem(
+                    format_value_with_unit(stats.minimum, sensor.unit, decimals)
+                ),
+                QTableWidgetItem(
+                    format_value_with_unit(stats.average, sensor.unit, decimals)
+                ),
+                QTableWidgetItem(
+                    format_value_with_unit(stats.maximum, sensor.unit, decimals)
+                ),
+                QTableWidgetItem("Доступен" if sensor.available else "Недоступен"),
                 QTableWidgetItem(sensor.backend_id),
             ]
             for column, item in enumerate(values):
                 item.setData(Qt.ItemDataRole.UserRole + 1, sensor.sensor_id)
+                if column == 9 and sensor.last_error:
+                    item.setToolTip(sensor.last_error)
                 self.setItem(row, column, item)
         self.blockSignals(False)
         self.setSortingEnabled(True)
@@ -90,15 +105,11 @@ class SensorTable(QTableWidget):
                 continue
             stats = sensor.statistics
             texts = {
-                5: format_value(sensor.value, decimals),
-                7: format_value(stats.minimum, decimals),
-                8: format_value(stats.average, decimals),
-                9: format_value(stats.maximum, decimals),
-                10: (
-                    "Доступен"
-                    if sensor.available
-                    else f"Недоступен: {sensor.last_error}"
-                ),
+                5: format_value_with_unit(sensor.value, sensor.unit, decimals),
+                6: format_value_with_unit(stats.minimum, sensor.unit, decimals),
+                7: format_value_with_unit(stats.average, sensor.unit, decimals),
+                8: format_value_with_unit(stats.maximum, sensor.unit, decimals),
+                9: "Доступен" if sensor.available else "Недоступен",
             }
             row_changed = False
             for column, text in texts.items():
@@ -106,9 +117,27 @@ class SensorTable(QTableWidget):
                 if item.text() != text:
                     item.setText(text)
                     row_changed = True
+                if column == 9:
+                    item.setToolTip(sensor.last_error)
             changed_rows += int(row_changed)
         self.setSortingEnabled(True)
         return changed_rows
+
+    def set_technical_columns_visible(self, visible: bool) -> None:
+        for column in TECHNICAL_COLUMNS:
+            self.setColumnHidden(column, not visible)
+
+    def column_widths(self) -> dict[str, int]:
+        return {
+            WIDTH_KEYS[column]: self.columnWidth(column)
+            for column in range(self.columnCount())
+        }
+
+    def restore_column_widths(self, widths: dict[str, int]) -> None:
+        for column, key in WIDTH_KEYS.items():
+            width = widths.get(key)
+            if isinstance(width, int) and 30 <= width <= 2000:
+                self.setColumnWidth(column, width)
 
     def _item_changed(self, item: QTableWidgetItem) -> None:
         if item.column() == 0:

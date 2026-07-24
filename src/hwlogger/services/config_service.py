@@ -26,6 +26,8 @@ class AppConfig:
     custom_names: dict[str, str] = field(default_factory=dict)
     window_width: int = 1280
     window_height: int = 760
+    technical_columns_visible: bool = False
+    sensor_column_widths: dict[str, int] = field(default_factory=dict)
 
 
 class ConfigService:

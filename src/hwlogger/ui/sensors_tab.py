@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLineEdit,
     QPushButton,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -18,7 +19,11 @@ class SensorsTab(QWidget):
     selection_changed = Signal()
     rescan_requested = Signal()
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        technical_columns_visible: bool = False,
+        column_widths: dict[str, int] | None = None,
+    ) -> None:
         super().__init__()
         self.all_sensors: list[Sensor] = []
         self.decimals = 2
@@ -33,12 +38,27 @@ class SensorsTab(QWidget):
         for kind in SensorType:
             self.kind.addItem(kind.value, kind)
         self.table = SensorTable()
+        self.table.restore_column_widths(column_widths or {})
+        self.technical_columns = QToolButton()
+        self.technical_columns.setText("Технические колонки")
+        self.technical_columns.setCheckable(True)
+        self.technical_columns.setChecked(technical_columns_visible)
+        self.table.set_technical_columns_visible(technical_columns_visible)
         enable = QPushButton("Включить все видимые")
         disable = QPushButton("Отключить все видимые")
         reset = QPushButton("Сбросить статистику")
         rescan = QPushButton("Пересканировать")
         controls = QHBoxLayout()
-        for widget in (self.search, self.category, self.kind, enable, disable, reset, rescan):
+        for widget in (
+            self.search,
+            self.category,
+            self.kind,
+            enable,
+            disable,
+            reset,
+            rescan,
+            self.technical_columns,
+        ):
             controls.addWidget(widget)
         layout = QVBoxLayout(self)
         layout.addLayout(controls)
@@ -51,6 +71,9 @@ class SensorsTab(QWidget):
         disable.clicked.connect(lambda: self._set_visible(False))
         reset.clicked.connect(self._reset_stats)
         rescan.clicked.connect(self.rescan_requested)
+        self.technical_columns.toggled.connect(
+            self.table.set_technical_columns_visible
+        )
 
     def set_sensors(self, sensors: list[Sensor], decimals: int = 2) -> None:
         self.all_sensors = sensors

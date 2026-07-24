@@ -74,6 +74,42 @@ def test_table_has_working_vertical_scrollbar_for_more_than_60_rows(qtbot):
     assert table.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAsNeeded
 
 
+def test_compact_table_hides_technical_columns_and_embeds_units(qtbot):
+    sensors = _many_sensors(2)
+    sensors[0].value = 48.0
+    tab = SensorsTab()
+    qtbot.addWidget(tab)
+    tab.set_sensors(sensors, decimals=0)
+    visible_headers = [
+        tab.table.horizontalHeaderItem(column).text()
+        for column in range(tab.table.columnCount())
+        if not tab.table.isColumnHidden(column)
+    ]
+    assert visible_headers == [
+        "Запись",
+        "Имя",
+        "Сейчас",
+        "Минимум",
+        "Среднее",
+        "Максимум",
+        "Состояние",
+    ]
+    assert tab.table.item(0, 5).text() == "48 °C"
+    tab.technical_columns.setChecked(True)
+    assert not tab.table.isColumnHidden(2)
+
+
+def test_sensor_column_widths_roundtrip(qtbot):
+    table = SensorTable()
+    qtbot.addWidget(table)
+    table.setColumnWidth(5, 147)
+    widths = table.column_widths()
+    restored = SensorTable()
+    qtbot.addWidget(restored)
+    restored.restore_column_widths(widths)
+    assert restored.columnWidth(5) == 147
+
+
 def test_fake_backend_values_change_over_time(qtbot):
     backend = FakeSensorBackend()
     sensors = backend.scan()

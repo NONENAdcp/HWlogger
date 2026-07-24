@@ -7,7 +7,6 @@ from pathlib import Path
 from PySide6.QtCore import QThread, QTimer
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
-    QLabel,
     QMainWindow,
     QMessageBox,
     QTabWidget,
@@ -19,6 +18,8 @@ from hwlogger.services.config_service import AppConfig, ConfigService
 from hwlogger.services.logging_service import LoggingService
 from hwlogger.services.polling_service import PollingService
 from hwlogger.services.sensor_manager import SensorManager
+from hwlogger.ui.graphs_tab import GraphsTab
+from hwlogger.ui.logs_tab import LogsTab
 from hwlogger.ui.sensors_tab import SensorsTab
 from hwlogger.ui.settings_tab import SettingsTab
 from hwlogger.widgets.recording_panel import RecordingPanel
@@ -39,13 +40,18 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("HWlogger 0.1.0")
         self.resize(config.window_width, config.window_height)
         self.panel = RecordingPanel()
-        self.sensors_tab = SensorsTab()
+        self.sensors_tab = SensorsTab(
+            config.technical_columns_visible, config.sensor_column_widths
+        )
         self.sensors_tab.set_sensors(self.sensors, 0)
         self.settings_tab = SettingsTab(config)
+        self.logs_tab = LogsTab(Path(config.log_directory))
+        self.graphs_tab = GraphsTab()
+        self.graphs_tab.set_sensors(self.sensors)
         tabs = QTabWidget()
         tabs.addTab(self.sensors_tab, "Датчики")
-        tabs.addTab(QLabel("Живые графики появятся на этапе 2."), "Графики")
-        tabs.addTab(QLabel("Просмотр и анализ логов появятся на этапе 2."), "Логи")
+        tabs.addTab(self.graphs_tab, "Графики")
+        tabs.addTab(self.logs_tab, "Логи")
         tabs.addTab(self.settings_tab, "Настройки")
         central = QWidget()
         layout = QVBoxLayout(central)
@@ -81,6 +87,7 @@ class MainWindow(QMainWindow):
         )
         self.latest_values = values
         changed_rows = self.sensors_tab.update_values()
+        self.graphs_tab.update_values(values)
         LOGGER.debug("Sensor table updated; changed_rows=%d", changed_rows)
 
     def start_recording(self) -> None:
@@ -114,6 +121,7 @@ class MainWindow(QMainWindow):
         self.panel.set_recording(False)
         if session:
             self.statusBar().showMessage(f"Сохранено: {session.csv_path}", 10_000)
+            self.logs_tab.refresh()
 
     def _update_record_status(self) -> None:
         if not self.logger.session:
@@ -127,6 +135,7 @@ class MainWindow(QMainWindow):
     def rescan(self) -> None:
         self.sensors = self.manager.scan()
         self.sensors_tab.set_sensors(self.sensors, 0)
+        self.graphs_tab.set_sensors(self.sensors)
         self._selection_changed()
 
     def save_settings(self) -> None:
@@ -137,11 +146,16 @@ class MainWindow(QMainWindow):
         self.config.csv_delimiter = self.settings_tab.delimiter.currentData()
         self.config.decimals = 0
         self.config.allow_nvidia_wake = self.settings_tab.allow_nvidia.isChecked()
+        self.logs_tab.set_directory(Path(self.config.log_directory))
         self.config.selected_sensors = [
             sensor.sensor_id for sensor in self.sensors if sensor.selected_for_log
         ]
         self.config.window_width = self.width()
         self.config.window_height = self.height()
+        self.config.technical_columns_visible = (
+            self.sensors_tab.technical_columns.isChecked()
+        )
+        self.config.sensor_column_widths = self.sensors_tab.table.column_widths()
         try:
             self.config_service.save(self.config)
             self.statusBar().showMessage(
