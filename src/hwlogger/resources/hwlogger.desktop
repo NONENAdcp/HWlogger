@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=HWlogger
+Exec=hwlogger
+Icon=hwlogger
+Categories=System;Monitor;
