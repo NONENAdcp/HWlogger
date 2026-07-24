@@ -4,7 +4,13 @@ set -euo pipefail
 project_root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$project_root"
 
-python_bin="$project_root/.venv/bin/python"
+if [[ -n "${VIRTUAL_ENV:-}" ]]; then
+  python_bin=python
+elif [[ -x "$project_root/.venv/bin/python" ]]; then
+  python_bin="$project_root/.venv/bin/python"
+else
+  python_bin=python
+fi
 version=$("$python_bin" -c 'from hwlogger import __version__; print(__version__)')
 appimagetool_bin=${APPIMAGETOOL:-}
 if [[ -z "$appimagetool_bin" ]]; then

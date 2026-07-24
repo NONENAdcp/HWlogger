@@ -4,10 +4,17 @@ set -euo pipefail
 project_root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$project_root"
 
-python_bin="$project_root/.venv/bin/python"
-pyinstaller_bin="$project_root/.venv/bin/pyinstaller"
-if [[ ! -x "$pyinstaller_bin" ]]; then
-  echo "PyInstaller is missing. Run ./scripts/install-dev.sh first." >&2
+if [[ -n "${VIRTUAL_ENV:-}" ]]; then
+  python_bin=python
+elif [[ -x "$project_root/.venv/bin/python" ]]; then
+  python_bin="$project_root/.venv/bin/python"
+else
+  python_bin=python
+fi
+
+if ! "$python_bin" -c 'import PyInstaller' >/dev/null 2>&1; then
+  echo "PyInstaller is missing from the active Python environment." >&2
+  echo "Install requirements-dev.txt before building." >&2
   exit 1
 fi
 
@@ -17,7 +24,7 @@ if [[ "$architecture" != "x86_64" ]]; then
   echo "Warning: this release script is intended for x86_64, found $architecture." >&2
 fi
 
-"$pyinstaller_bin" --noconfirm --clean packaging/hwlogger.spec
+"$python_bin" -m PyInstaller --noconfirm --clean packaging/hwlogger.spec
 cp "$project_root/LICENSE" "$project_root/dist/HWlogger/LICENSE"
 cp "$project_root/README.md" "$project_root/dist/HWlogger/README.md"
 cp "$project_root/src/hwlogger/resources/hwlogger.desktop" \
