@@ -4,11 +4,23 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hwlogger"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Read-only Linux hardware sensor monitor and logger"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "GPL-3.0-or-later"}
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: X11 Applications :: Qt",
+  "Intended Audience :: End Users/Desktop",
+  "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: System :: Monitoring",
+]
 dependencies = [
   "PySide6>=6.7",
   "psutil>=5.9",
@@ -19,6 +31,10 @@ dependencies = [
 [project.gui-scripts]
 hwlogger = "hwlogger.app:main"
 
+[project.urls]
+Homepage = "https://github.com/your-account/HWlogger"
+Issues = "https://github.com/your-account/HWlogger/issues"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 include-package-data = true
@@ -28,6 +44,9 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 hwlogger = ["resources/*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "hwlogger.__version__"}
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

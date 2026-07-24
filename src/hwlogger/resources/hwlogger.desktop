@@ -1,6 +1,8 @@
 [Desktop Entry]
 Type=Application
 Name=HWlogger
-Exec=hwlogger
+Exec=HWlogger
 Icon=hwlogger
-Categories=System;Monitor;
+Terminal=false
+Categories=System;Utility;
+StartupWMClass=HWlogger

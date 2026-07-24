@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from hwlogger.services.config_service import ConfigService
@@ -22,6 +24,9 @@ def configure_logging() -> None:
 
 def main() -> int:
     configure_logging()
+    smoke_test = os.environ.get("HWLOGGER_SMOKE_TEST") == "1"
+    if smoke_test:
+        os.environ["HWLOGGER_FAKE_SENSORS"] = "1"
     app = QApplication(sys.argv)
     app.setApplicationName("HWlogger")
     app.setOrganizationName("HWlogger")
@@ -29,6 +34,8 @@ def main() -> int:
     config = config_service.load()
     window = MainWindow(config_service, config)
     window.show()
+    if smoke_test:
+        QTimer.singleShot(2500, window.close)
     if config_service.warning:
         QMessageBox.warning(window, "Конфигурация восстановлена", config_service.warning)
     return app.exec()

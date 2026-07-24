@@ -14,10 +14,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from hwlogger import __version__
 from hwlogger.services.config_service import AppConfig, ConfigService
 from hwlogger.services.logging_service import LoggingService
 from hwlogger.services.polling_service import PollingService
 from hwlogger.services.sensor_manager import SensorManager
+from hwlogger.ui.dialogs.about_dialog import AboutDialog
 from hwlogger.ui.graphs_tab import GraphsTab
 from hwlogger.ui.logs_tab import LogsTab
 from hwlogger.ui.sensors_tab import SensorsTab
@@ -37,7 +39,8 @@ class MainWindow(QMainWindow):
         self.logger = LoggingService()
         self.latest_values: dict[str, float | str | None] = {}
         self.record_started = 0.0
-        self.setWindowTitle("HWlogger 0.1.0")
+        self._closing = False
+        self.setWindowTitle(f"HWlogger {__version__}")
         self.resize(config.window_width, config.window_height)
         self.panel = RecordingPanel()
         self.sensors_tab = SensorsTab(
@@ -58,6 +61,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.panel)
         layout.addWidget(tabs)
         self.setCentralWidget(central)
+        help_menu = self.menuBar().addMenu("Справка")
+        about_action = help_menu.addAction("О программе")
+        about_action.triggered.connect(self.show_about)
         self.panel.start_requested.connect(self.start_recording)
         self.panel.stop_requested.connect(self.stop_recording)
         self.sensors_tab.selection_changed.connect(self._selection_changed)
@@ -80,6 +86,8 @@ class MainWindow(QMainWindow):
         self.panel.set_selected(len(selected))
 
     def _values_ready(self, values: dict) -> None:
+        if self._closing:
+            return
         if QThread.currentThread() != self.thread():
             raise RuntimeError("Sensor GUI update attempted outside the main Qt thread")
         LOGGER.debug(
@@ -118,8 +126,9 @@ class MainWindow(QMainWindow):
         except OSError as exc:
             QMessageBox.critical(self, "Ошибка завершения записи", str(exc))
             return
-        self.panel.set_recording(False)
-        if session:
+        if not self._closing:
+            self.panel.set_recording(False)
+        if session and not self._closing:
             self.statusBar().showMessage(f"Сохранено: {session.csv_path}", 10_000)
             self.logs_tab.refresh()
 
@@ -138,7 +147,7 @@ class MainWindow(QMainWindow):
         self.graphs_tab.set_sensors(self.sensors)
         self._selection_changed()
 
-    def save_settings(self) -> None:
+    def save_settings(self, refresh_logs: bool = True) -> None:
         self.config.log_directory = self.settings_tab.log_directory.text()
         self.config.ui_interval_ms = self.settings_tab.ui_interval.value()
         self.config.logging_interval_ms = self.settings_tab.log_interval.value()
@@ -146,7 +155,8 @@ class MainWindow(QMainWindow):
         self.config.csv_delimiter = self.settings_tab.delimiter.currentData()
         self.config.decimals = 0
         self.config.allow_nvidia_wake = self.settings_tab.allow_nvidia.isChecked()
-        self.logs_tab.set_directory(Path(self.config.log_directory))
+        if refresh_logs:
+            self.logs_tab.set_directory(Path(self.config.log_directory))
         self.config.selected_sensors = [
             sensor.sensor_id for sensor in self.sensors if sensor.selected_for_log
         ]
@@ -165,6 +175,9 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Ошибка сохранения настроек", str(exc))
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        if self._closing:
+            event.accept()
+            return
         if self.logger.active:
             result = QMessageBox.question(
                 self,
@@ -176,11 +189,54 @@ class MainWindow(QMainWindow):
             if result != QMessageBox.StandardButton.Yes:
                 event.ignore()
                 return
+        shutdown_started = time.perf_counter()
+        self._closing = True
+        LOGGER.info("Shutdown started")
+
+        stage_started = time.perf_counter()
+        self.log_timer.stop()
+        self.status_timer.stop()
+        LOGGER.info(
+            "Shutdown stage timers: %.3f s", time.perf_counter() - stage_started
+        )
+
+        if self.logger.active:
+            stage_started = time.perf_counter()
             self.stop_recording()
+            LOGGER.info(
+                "Shutdown stage recording: %.3f s",
+                time.perf_counter() - stage_started,
+            )
             if self.logger.active:
+                self._closing = False
                 event.ignore()
                 return
-        self.save_settings()
-        self.polling.stop()
+
+        stage_started = time.perf_counter()
+        try:
+            self.polling.values_ready.disconnect(self._values_ready)
+        except RuntimeError:
+            LOGGER.debug("Polling signal was already disconnected")
+        polling_stopped = self.polling.stop(timeout_ms=700)
+        LOGGER.info(
+            "Shutdown stage polling: %.3f s (stopped=%s)",
+            time.perf_counter() - stage_started,
+            polling_stopped,
+        )
+
+        stage_started = time.perf_counter()
         self.manager.shutdown()
+        LOGGER.info(
+            "Shutdown stage backends: %.3f s", time.perf_counter() - stage_started
+        )
+
+        stage_started = time.perf_counter()
+        self.save_settings(refresh_logs=False)
+        LOGGER.info(
+            "Shutdown stage config: %.3f s", time.perf_counter() - stage_started
+        )
+        LOGGER.info("Shutdown complete: %.3f s", time.perf_counter() - shutdown_started)
         event.accept()
+
+    def show_about(self) -> None:
+        AboutDialog(Path(self.config.log_directory), self).exec()

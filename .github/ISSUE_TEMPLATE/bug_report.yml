@@ -1,0 +1,66 @@
+name: Bug report
+description: Report a reproducible HWlogger problem
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping improve HWlogger. Remove sensitive data from logs.
+  - type: input
+    id: distribution
+    attributes:
+      label: Linux distribution and version
+      placeholder: Manjaro, Fedora 42, Ubuntu 24.04, ...
+    validations:
+      required: true
+  - type: dropdown
+    id: display
+    attributes:
+      label: Display environment
+      options: [Wayland, X11, Other]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: HWlogger version
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: textarea
+    id: hardware
+    attributes:
+      label: CPU and GPU
+      placeholder: CPU model, GPU model, driver version
+    validations:
+      required: true
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation source
+      options: [AppImage, PyInstaller archive, Source checkout, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Start HWlogger\n2. Select ...\n3. Observe ..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Application log
+      description: Relevant lines from ~/.local/state/hwlogger/hwlogger.log
+      render: text
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context

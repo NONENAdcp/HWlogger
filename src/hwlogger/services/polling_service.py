@@ -19,6 +19,7 @@ class PollWorker(QObject):
         self.interval_ms = interval_ms
         self.timer: QTimer | None = None
         self._previous_values: dict[str, float | str | None] = {}
+        self._stopping = False
 
     @Slot()
     def start(self) -> None:
@@ -41,6 +42,8 @@ class PollWorker(QObject):
 
     @Slot()
     def poll(self) -> None:
+        if self._stopping or QThread.currentThread().isInterruptionRequested():
+            return
         LOGGER.debug("Polling cycle begin")
         values = self.manager.read_all()
         changed = sum(
@@ -59,11 +62,13 @@ class PollWorker(QObject):
     @Slot()
     def stop(self) -> None:
         LOGGER.info("Polling worker stop")
+        self._stopping = True
         if self.timer:
             self.timer.stop()
             self.timer.deleteLater()
             self.timer = None
         self.stopped.emit()
+        QThread.currentThread().quit()
 
 
 class PollingService(QObject):
@@ -87,7 +92,6 @@ class PollingService(QObject):
             )
         )
         self.request_stop.connect(self.worker.stop)
-        self.worker.stopped.connect(self.thread.quit)
         self.worker.stopped.connect(self.worker.deleteLater)
 
     def start(self) -> None:
@@ -98,7 +102,20 @@ class PollingService(QObject):
         )
         self.thread.start()
 
-    def stop(self) -> None:
+    def stop(self, timeout_ms: int = 700) -> bool:
         if self.thread.isRunning():
             self.request_stop.emit()
-            self.thread.wait(3000)
+            if self.thread.wait(timeout_ms):
+                return True
+            LOGGER.warning(
+                "Polling thread did not stop within %d ms; requesting interruption",
+                timeout_ms,
+            )
+            self.thread.requestInterruption()
+            self.thread.quit()
+            if self.thread.wait(100):
+                return True
+            LOGGER.error("Polling thread required forced termination")
+            self.thread.terminate()
+            return self.thread.wait(100)
+        return True
