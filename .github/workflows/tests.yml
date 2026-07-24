@@ -32,4 +32,4 @@ jobs:
       - run: ruff check .
       - run: pytest -q
       - name: Headless GUI smoke test with fake sensors
-        run: xvfb-run -a env HWLOGGER_SMOKE_TEST=1 timeout 15s python -m hwlogger
+        run: xvfb-run -a env QT_QPA_PLATFORM=offscreen HWLOGGER_SMOKE_TEST=1 timeout 15s python -m hwlogger
