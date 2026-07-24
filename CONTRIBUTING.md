@@ -6,7 +6,7 @@ Keep sensor access read-only and platform-specific code isolated in backends.
 ## Setup
 
 ```bash
-git clone https://github.com/your-account/HWlogger.git
+git clone https://github.com/NONENAdcp/HWlogger.git
 cd HWlogger
 ./scripts/install-dev.sh
 ```

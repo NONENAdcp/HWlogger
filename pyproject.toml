@@ -32,8 +32,8 @@ dependencies = [
 hwlogger = "hwlogger.app:main"
 
 [project.urls]
-Homepage = "https://github.com/your-account/HWlogger"
-Issues = "https://github.com/your-account/HWlogger/issues"
+Homepage = "https://github.com/NONENAdcp/HWlogger"
+Issues = "https://github.com/NONENAdcp/HWlogger/issues"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

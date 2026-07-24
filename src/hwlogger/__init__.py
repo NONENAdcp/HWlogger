@@ -2,4 +2,4 @@
 
 __version__ = "0.1.5"
 
-PROJECT_URL = "https://github.com/your-account/HWlogger"
+PROJECT_URL = "https://github.com/NONENAdcp/HWlogger"

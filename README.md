@@ -58,7 +58,7 @@ driver when available.
 ## Running from source
 
 ```bash
-git clone https://github.com/your-account/HWlogger.git
+git clone https://github.com/NONENAdcp/HWlogger.git
 cd HWlogger
 ./scripts/install-dev.sh
 ./scripts/run-dev.sh
