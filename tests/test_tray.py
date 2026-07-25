@@ -3,7 +3,7 @@ from __future__ import annotations
 from unittest.mock import Mock
 
 import pytest
-from PySide6.QtWidgets import QMessageBox, QSystemTrayIcon
+from PySide6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 
 from hwlogger.services.config_service import AppConfig, ConfigService
 from hwlogger.ui.main_window import MainWindow
@@ -188,6 +188,22 @@ def test_tray_exit_always_performs_idempotent_full_shutdown(
     assert window._shutdown_complete
     assert stop.call_count == 1
     assert not controller.tray.isVisible()
+
+
+def test_tray_exit_requests_application_quit_when_window_is_hidden(
+    tmp_path, monkeypatch, qtbot
+):
+    window = _window(tmp_path, monkeypatch, qtbot)
+    app = QApplication.instance()
+    quit_application = Mock()
+    monkeypatch.setattr(app, "quit", quit_application)
+    window.hide()
+
+    window.tray_controller.exit_action.trigger()
+    qtbot.waitUntil(lambda: quit_application.call_count == 1)
+
+    assert window._shutdown_complete
+    assert not window.polling.thread.isRunning()
 
 
 def test_active_recording_is_finished_by_tray_exit(tmp_path, monkeypatch, qtbot):

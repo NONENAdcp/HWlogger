@@ -385,6 +385,7 @@ class MainWindow(QMainWindow):
             app = QApplication.instance()
             if app is not None:
                 app.setQuitOnLastWindowClosed(True)
+                QTimer.singleShot(0, app.quit)
         self._shutdown_complete = True
         LOGGER.info("Shutdown complete: %.3f s", time.perf_counter() - shutdown_started)
         event.accept()
