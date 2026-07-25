@@ -19,7 +19,7 @@ from hwlogger.services.config_service import AppConfig
 class SettingsTab(QWidget):
     save_requested = Signal()
 
-    def __init__(self, config: AppConfig) -> None:
+    def __init__(self, config: AppConfig, tray_available: bool = True) -> None:
         super().__init__()
         self.log_directory = QLineEdit(config.log_directory)
         browse = QPushButton("Обзор…")
@@ -44,6 +44,11 @@ class SettingsTab(QWidget):
         self.delimiter.setCurrentIndex(max(0, self.delimiter.findData(config.csv_delimiter)))
         self.allow_nvidia = QCheckBox()
         self.allow_nvidia.setChecked(config.allow_nvidia_wake)
+        self.close_to_tray = QCheckBox()
+        self.close_to_tray.setChecked(config.close_to_tray)
+        self.close_to_tray.setEnabled(tray_available)
+        if not tray_available:
+            self.close_to_tray.setToolTip("Системный трей недоступен")
         save = QPushButton("Сохранить настройки")
         form = QFormLayout(self)
         form.addRow("Каталог логов", directory_row)
@@ -52,6 +57,7 @@ class SettingsTab(QWidget):
         form.addRow("Flush", self.flush_rows)
         form.addRow("CSV-разделитель", self.delimiter)
         form.addRow("Разрешить пробуждать NVIDIA GPU", self.allow_nvidia)
+        form.addRow("Сворачивать в трей при закрытии окна", self.close_to_tray)
         form.addRow(save)
         browse.clicked.connect(self._browse)
         save.clicked.connect(self.save_requested)

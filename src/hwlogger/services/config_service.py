@@ -21,6 +21,7 @@ class AppConfig:
     decimals: int = 2
     theme: str = "system"
     allow_nvidia_wake: bool = False
+    close_to_tray: bool = True
     show_unavailable: bool = True
     selected_sensors: list[str] = field(default_factory=list)
     custom_names: dict[str, str] = field(default_factory=dict)

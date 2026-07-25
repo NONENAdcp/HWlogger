@@ -10,7 +10,9 @@ from hwlogger.ui.main_window import MainWindow
 def _window(tmp_path, monkeypatch, qtbot):
     monkeypatch.setenv("HWLOGGER_FAKE_SENSORS", "1")
     config = AppConfig(log_directory=str(tmp_path / "logs"), ui_interval_ms=50)
-    window = MainWindow(ConfigService(tmp_path / "config.json"), config)
+    window = MainWindow(
+        ConfigService(tmp_path / "config.json"), config, tray_available=False
+    )
     qtbot.addWidget(window)
     window.show()
     qtbot.waitUntil(lambda: bool(window.latest_values), timeout=2000)

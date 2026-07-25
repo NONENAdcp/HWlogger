@@ -7,8 +7,10 @@ from pathlib import Path
 from PySide6.QtCore import QThread, QTimer
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
+    QApplication,
     QMainWindow,
     QMessageBox,
+    QSystemTrayIcon,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -24,13 +26,19 @@ from hwlogger.ui.graphs_tab import GraphsTab
 from hwlogger.ui.logs_tab import LogsTab
 from hwlogger.ui.sensors_tab import SensorsTab
 from hwlogger.ui.settings_tab import SettingsTab
+from hwlogger.ui.tray import TrayController
 from hwlogger.widgets.recording_panel import RecordingPanel
 
 LOGGER = logging.getLogger(__name__)
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, config_service: ConfigService, config: AppConfig) -> None:
+    def __init__(
+        self,
+        config_service: ConfigService,
+        config: AppConfig,
+        tray_available: bool | None = None,
+    ) -> None:
         super().__init__()
         self.config_service = config_service
         self.config = config
@@ -40,6 +48,14 @@ class MainWindow(QMainWindow):
         self.latest_values: dict[str, float | str | None] = {}
         self.record_started = 0.0
         self._closing = False
+        self._exit_requested = False
+        self._shutdown_complete = False
+        if tray_available is None:
+            tray_available = QSystemTrayIcon.isSystemTrayAvailable()
+        self.tray_controller = TrayController(self) if tray_available else None
+        app = QApplication.instance()
+        if self.tray_controller is not None and app is not None:
+            app.setQuitOnLastWindowClosed(False)
         self.setWindowTitle(f"HWlogger {__version__}")
         self.resize(config.window_width, config.window_height)
         self.panel = RecordingPanel()
@@ -47,7 +63,7 @@ class MainWindow(QMainWindow):
             config.technical_columns_visible, config.sensor_column_widths
         )
         self.sensors_tab.set_sensors(self.sensors, 0)
-        self.settings_tab = SettingsTab(config)
+        self.settings_tab = SettingsTab(config, tray_available)
         self.logs_tab = LogsTab(Path(config.log_directory))
         self.graphs_tab = GraphsTab()
         self.graphs_tab.set_sensors(self.sensors)
@@ -69,6 +85,8 @@ class MainWindow(QMainWindow):
         self.sensors_tab.selection_changed.connect(self._selection_changed)
         self.sensors_tab.rescan_requested.connect(self.rescan)
         self.settings_tab.save_requested.connect(self.save_settings)
+        if self.tray_controller is not None:
+            self.tray_controller.exit_requested.connect(self.request_exit)
         self.polling = PollingService(self.manager, config.ui_interval_ms)
         self.polling.values_ready.connect(self._values_ready)
         self.polling.start()
@@ -155,6 +173,7 @@ class MainWindow(QMainWindow):
         self.config.csv_delimiter = self.settings_tab.delimiter.currentData()
         self.config.decimals = 0
         self.config.allow_nvidia_wake = self.settings_tab.allow_nvidia.isChecked()
+        self.config.close_to_tray = self.settings_tab.close_to_tray.isChecked()
         if refresh_logs:
             self.logs_tab.set_directory(Path(self.config.log_directory))
         self.config.selected_sensors = [
@@ -175,8 +194,20 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Ошибка сохранения настроек", str(exc))
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        if self._closing:
+        if self._shutdown_complete:
             event.accept()
+            return
+        if (
+            not self._exit_requested
+            and self.tray_controller is not None
+            and self.settings_tab.close_to_tray.isChecked()
+        ):
+            event.ignore()
+            self.tray_controller.hide_window()
+            self.tray_controller.notify_hidden_once()
+            return
+        if self._closing:
+            event.ignore()
             return
         if self.logger.active:
             result = QMessageBox.question(
@@ -187,6 +218,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.StandardButton.No,
             )
             if result != QMessageBox.StandardButton.Yes:
+                self._exit_requested = False
                 event.ignore()
                 return
         shutdown_started = time.perf_counter()
@@ -209,6 +241,7 @@ class MainWindow(QMainWindow):
             )
             if self.logger.active:
                 self._closing = False
+                self._exit_requested = False
                 event.ignore()
                 return
 
@@ -235,8 +268,20 @@ class MainWindow(QMainWindow):
         LOGGER.info(
             "Shutdown stage config: %.3f s", time.perf_counter() - stage_started
         )
+        if self.tray_controller is not None:
+            self.tray_controller.shutdown()
+            app = QApplication.instance()
+            if app is not None:
+                app.setQuitOnLastWindowClosed(True)
+        self._shutdown_complete = True
         LOGGER.info("Shutdown complete: %.3f s", time.perf_counter() - shutdown_started)
         event.accept()
+
+    def request_exit(self) -> None:
+        if self._exit_requested or self._shutdown_complete:
+            return
+        self._exit_requested = True
+        self.close()
 
     def show_about(self) -> None:
         AboutDialog(Path(self.config.log_directory), self).exec()

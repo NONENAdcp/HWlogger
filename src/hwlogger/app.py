@@ -35,7 +35,7 @@ def main() -> int:
     window = MainWindow(config_service, config)
     window.show()
     if smoke_test:
-        QTimer.singleShot(2500, window.close)
+        QTimer.singleShot(2500, window.request_exit)
     if config_service.warning:
         QMessageBox.warning(window, "Конфигурация восстановлена", config_service.warning)
     return app.exec()
