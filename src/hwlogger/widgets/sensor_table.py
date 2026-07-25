@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
@@ -9,7 +10,8 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
 )
 
-from hwlogger.models.sensor import Sensor
+from hwlogger.models.sensor import Sensor, SensorType
+from hwlogger.ui.temperature_indication import TemperatureLevel, temperature_level
 from hwlogger.utils.units import format_value_with_unit
 
 HEADERS = [
@@ -22,6 +24,14 @@ WIDTH_KEYS = {
     5: "current", 6: "minimum", 7: "average", 8: "maximum",
     9: "status", 10: "path",
 }
+TEMPERATURE_COLUMNS = (5, 8)
+TEMPERATURE_COLORS = {
+    TemperatureLevel.YELLOW: ("#f2c94c", "#202020"),
+    TemperatureLevel.ORANGE: ("#d9822b", "#202020"),
+    TemperatureLevel.RED: ("#b83a32", "#ffffff"),
+    TemperatureLevel.BRIGHT_RED: ("#d32f2f", "#ffffff"),
+    TemperatureLevel.DARK_RED: ("#741f1f", "#ffffff"),
+}
 
 
 class SensorTable(QTableWidget):
@@ -29,6 +39,9 @@ class SensorTable(QTableWidget):
 
     def __init__(self) -> None:
         super().__init__(0, len(HEADERS))
+        self._temperature_levels: dict[
+            tuple[str, int], TemperatureLevel
+        ] = {}
         self.setHorizontalHeaderLabels(HEADERS)
         self.setSortingEnabled(True)
         self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -49,6 +62,7 @@ class SensorTable(QTableWidget):
         self.itemChanged.connect(self._item_changed)
 
     def set_sensors(self, sensors: list[Sensor], decimals: int = 0) -> None:
+        self._temperature_levels.clear()
         sort_column = self.horizontalHeader().sortIndicatorSection()
         order = self.horizontalHeader().sortIndicatorOrder()
         self.setSortingEnabled(False)
@@ -88,6 +102,12 @@ class SensorTable(QTableWidget):
                 if column == 9 and sensor.last_error:
                     item.setToolTip(sensor.last_error)
                 self.setItem(row, column, item)
+            self._apply_temperature_style(
+                self.item(row, 5), sensor, sensor.value, 5
+            )
+            self._apply_temperature_style(
+                self.item(row, 8), sensor, stats.maximum, 8
+            )
         self.blockSignals(False)
         self.setSortingEnabled(True)
         self.sortItems(sort_column, order)
@@ -119,6 +139,12 @@ class SensorTable(QTableWidget):
                     row_changed = True
                 if column == 9:
                     item.setToolTip(sensor.last_error)
+            self._apply_temperature_style(
+                self.item(row, 5), sensor, sensor.value, 5
+            )
+            self._apply_temperature_style(
+                self.item(row, 8), sensor, stats.maximum, 8
+            )
             changed_rows += int(row_changed)
         self.setSortingEnabled(True)
         return changed_rows
@@ -138,6 +164,52 @@ class SensorTable(QTableWidget):
             width = widths.get(key)
             if isinstance(width, int) and 30 <= width <= 2000:
                 self.setColumnWidth(column, width)
+
+    def _apply_temperature_style(
+        self,
+        item: QTableWidgetItem,
+        sensor: Sensor,
+        value: float | str | None,
+        column: int,
+    ) -> None:
+        key = (sensor.sensor_id, column)
+        level = TemperatureLevel.NORMAL
+        is_number = (
+            isinstance(value, (int, float)) and not isinstance(value, bool)
+        )
+        if (
+            sensor.available
+            and sensor.sensor_type == SensorType.TEMPERATURE
+            and is_number
+        ):
+            previous = self._temperature_levels.get(
+                key, TemperatureLevel.NORMAL
+            )
+            level = temperature_level(float(value), previous)
+
+        self._reset_item_style(item)
+        colors = TEMPERATURE_COLORS.get(level)
+        if colors is not None:
+            background, foreground = colors
+            item.setBackground(QColor(background))
+            item.setForeground(QColor(foreground))
+            if level >= TemperatureLevel.BRIGHT_RED:
+                font = item.font()
+                font.setBold(True)
+                item.setFont(font)
+
+        if level == TemperatureLevel.NORMAL:
+            self._temperature_levels.pop(key, None)
+        else:
+            self._temperature_levels[key] = level
+
+    @staticmethod
+    def _reset_item_style(item: QTableWidgetItem) -> None:
+        item.setBackground(QBrush())
+        item.setForeground(QBrush())
+        font = item.font()
+        font.setBold(False)
+        item.setFont(font)
 
     def _item_changed(self, item: QTableWidgetItem) -> None:
         if item.column() == 0:

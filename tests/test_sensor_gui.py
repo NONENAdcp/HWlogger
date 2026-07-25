@@ -117,3 +117,104 @@ def test_fake_backend_values_change_over_time(qtbot):
     qtbot.wait(1100)
     second = [sensor.read() for sensor in sensors]
     assert first != second
+
+
+def _brush_is_standard(item) -> bool:
+    return item.background().style() == Qt.BrushStyle.NoBrush
+
+
+def test_temperature_styles_only_current_and_maximum(qtbot):
+    sensor = _many_sensors(1)[0]
+    sensor.value = 90.0
+    sensor.statistics.add(95.0)
+    table = SensorTable()
+    qtbot.addWidget(table)
+    table.set_sensors([sensor])
+
+    assert not _brush_is_standard(table.item(0, 5))
+    assert table.item(0, 5).font().bold()
+    assert not _brush_is_standard(table.item(0, 8))
+    assert table.item(0, 8).font().bold()
+    assert _brush_is_standard(table.item(0, 6))
+    assert _brush_is_standard(table.item(0, 7))
+    assert _brush_is_standard(table.item(0, 1))
+    assert _brush_is_standard(table.item(0, 9))
+
+
+def test_temperature_current_and_maximum_have_independent_hysteresis(qtbot):
+    sensor = _many_sensors(1)[0]
+    sensor.value = 80.0
+    sensor.statistics.maximum = 90.0
+    table = SensorTable()
+    qtbot.addWidget(table)
+    table.set_sensors([sensor])
+
+    sensor.value = 77.9
+    sensor.statistics.maximum = 88.1
+    table.update_sensor_values({sensor.sensor_id: sensor}, 0)
+
+    current = table.item(0, 5)
+    maximum = table.item(0, 8)
+    assert current.background().color() != maximum.background().color()
+    assert not current.font().bold()
+    assert maximum.font().bold()
+
+
+def test_non_temperature_sensor_is_not_colored_by_name_or_value(qtbot):
+    sensor = _many_sensors(1)[0]
+    sensor.name = "Температура CPU"
+    sensor.sensor_type = SensorType.POWER
+    sensor.unit = "W"
+    sensor.value = 95.0
+    sensor.statistics.add(95.0)
+    table = SensorTable()
+    qtbot.addWidget(table)
+    table.set_sensors([sensor])
+
+    assert _brush_is_standard(table.item(0, 5))
+    assert _brush_is_standard(table.item(0, 8))
+
+
+def test_temperature_style_resets_for_none_unavailable_and_set_sensors(qtbot):
+    sensor = _many_sensors(1)[0]
+    sensor.value = 95.0
+    sensor.statistics.add(95.0)
+    table = SensorTable()
+    qtbot.addWidget(table)
+    table.set_sensors([sensor])
+    assert table.item(0, 5).font().bold()
+
+    sensor.value = None
+    table.update_sensor_values({sensor.sensor_id: sensor}, 0)
+    assert _brush_is_standard(table.item(0, 5))
+    assert not table.item(0, 5).font().bold()
+
+    sensor.value = 95.0
+    sensor.available = False
+    table.update_sensor_values({sensor.sensor_id: sensor}, 0)
+    assert _brush_is_standard(table.item(0, 5))
+    assert _brush_is_standard(table.item(0, 8))
+
+    sensor.available = True
+    sensor.value = 69.9
+    sensor.statistics.reset()
+    sensor.statistics.add(69.9)
+    table.set_sensors([sensor])
+    assert _brush_is_standard(table.item(0, 5))
+    assert _brush_is_standard(table.item(0, 8))
+    assert not table.item(0, 5).font().bold()
+
+
+def test_critical_temperature_colors_have_readable_contrast(qtbot):
+    sensor = _many_sensors(1)[0]
+    sensor.value = 95.0
+    table = SensorTable()
+    qtbot.addWidget(table)
+    table.set_sensors([sensor])
+    item = table.item(0, 5)
+
+    background = item.background().color()
+    foreground = item.foreground().color()
+    assert background.isValid()
+    assert foreground.isValid()
+    assert background.lightness() < foreground.lightness()
