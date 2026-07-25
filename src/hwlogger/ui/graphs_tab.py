@@ -107,15 +107,17 @@ class GraphsTab(QWidget):
             selected_ids = self._selected_ids()
             self.warning.setText(f"Можно выбрать не более {self.max_lines} датчиков")
         selected = [
-            (sensor_id, self.sensors[sensor_id].name, self.sensors[sensor_id].unit)
+            (
+                sensor_id,
+                self.sensors[sensor_id].name,
+                self.sensors[sensor_id].unit,
+                self.sensors[sensor_id].sensor_type,
+            )
             for sensor_id in selected_ids
-            if sensor_id in self.sensors
+            if sensor_id in self.sensors and self.sensors[sensor_id].available
         ]
         self.graph.set_selected(selected)
-        units = {unit for _sensor_id, _name, unit in selected if unit}
-        if len(units) > 1:
-            self.warning.setText("Смешаны несовместимые единицы")
-        elif len(selected_ids) <= self.max_lines:
+        if len(selected_ids) <= self.max_lines:
             self.warning.setText("")
         self._update_statistics()
 
