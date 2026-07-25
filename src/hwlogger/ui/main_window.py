@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import logging
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QThread, QTimer
+from PySide6.QtCore import QByteArray, QRect, Qt, QThread, QTimer
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -17,7 +19,12 @@ from PySide6.QtWidgets import (
 )
 
 from hwlogger import __version__
-from hwlogger.services.config_service import AppConfig, ConfigService
+from hwlogger.services.config_service import (
+    MAIN_TAB_IDS,
+    AppConfig,
+    ConfigService,
+    valid_polling_interval,
+)
 from hwlogger.services.logging_service import LoggingService
 from hwlogger.services.polling_service import PollingService
 from hwlogger.services.sensor_manager import SensorManager
@@ -42,6 +49,9 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.config_service = config_service
         self.config = config
+        self.config.ui_interval_ms = valid_polling_interval(
+            self.config.ui_interval_ms
+        )
         self.manager = SensorManager(config)
         self.sensors = self.manager.scan()
         self.logger = LoggingService()
@@ -65,18 +75,26 @@ class MainWindow(QMainWindow):
         self.sensors_tab.set_sensors(self.sensors, 0)
         self.settings_tab = SettingsTab(config, tray_available)
         self.logs_tab = LogsTab(Path(config.log_directory))
-        self.graphs_tab = GraphsTab()
+        self.graphs_tab = GraphsTab(
+            selected_sensor_ids=config.selected_graph_sensors
+        )
         self.graphs_tab.set_sensors(self.sensors)
-        tabs = QTabWidget()
-        tabs.addTab(self.sensors_tab, "Датчики")
-        tabs.addTab(self.graphs_tab, "Графики")
-        tabs.addTab(self.logs_tab, "Логи")
-        tabs.addTab(self.settings_tab, "Настройки")
+        self.tabs = QTabWidget()
+        self.tabs.addTab(self.sensors_tab, "Датчики")
+        self.tabs.addTab(self.graphs_tab, "Графики")
+        self.tabs.addTab(self.logs_tab, "Логи")
+        self.tabs.addTab(self.settings_tab, "Настройки")
+        try:
+            initial_tab = MAIN_TAB_IDS.index(config.active_tab)
+        except ValueError:
+            initial_tab = 0
+        self.tabs.setCurrentIndex(initial_tab)
         central = QWidget()
         layout = QVBoxLayout(central)
         layout.addWidget(self.panel)
-        layout.addWidget(tabs)
+        layout.addWidget(self.tabs)
         self.setCentralWidget(central)
+        self._restore_window_state()
         help_menu = self.menuBar().addMenu("Справка")
         about_action = help_menu.addAction("О программе")
         about_action.triggered.connect(self.show_about)
@@ -85,6 +103,13 @@ class MainWindow(QMainWindow):
         self.sensors_tab.selection_changed.connect(self._selection_changed)
         self.sensors_tab.rescan_requested.connect(self.rescan)
         self.settings_tab.save_requested.connect(self.save_settings)
+        self.tabs.currentChanged.connect(self._active_tab_changed)
+        self.settings_tab.ui_interval.valueChanged.connect(
+            self._polling_interval_changed
+        )
+        self.graphs_tab.selection_changed.connect(
+            self._graph_selection_changed
+        )
         if self.tray_controller is not None:
             self.tray_controller.exit_requested.connect(self.request_exit)
         self.polling = PollingService(self.manager, config.ui_interval_ms)
@@ -179,8 +204,7 @@ class MainWindow(QMainWindow):
         self.config.selected_sensors = [
             sensor.sensor_id for sensor in self.sensors if sensor.selected_for_log
         ]
-        self.config.window_width = self.width()
-        self.config.window_height = self.height()
+        self._capture_window_state()
         self.config.technical_columns_visible = (
             self.sensors_tab.technical_columns.isChecked()
         )
@@ -192,6 +216,94 @@ class MainWindow(QMainWindow):
             )
         except OSError as exc:
             QMessageBox.critical(self, "Ошибка сохранения настроек", str(exc))
+
+    def _active_tab_changed(self, index: int) -> None:
+        if 0 <= index < len(MAIN_TAB_IDS):
+            self.config.active_tab = MAIN_TAB_IDS[index]
+            self._save_interface_state()
+
+    def _polling_interval_changed(self, value: int) -> None:
+        self.config.ui_interval_ms = valid_polling_interval(value)
+        self._save_interface_state()
+
+    def _graph_selection_changed(self, sensor_ids: list[str]) -> None:
+        self.config.selected_graph_sensors = list(dict.fromkeys(sensor_ids))[:8]
+        self._save_interface_state()
+
+    def _save_interface_state(self) -> None:
+        if self._closing or self._shutdown_complete:
+            return
+        try:
+            self.config_service.save(self.config)
+        except OSError:
+            LOGGER.exception("Could not persist interface state")
+
+    def _capture_window_state(self) -> None:
+        state = self.windowState()
+        self.config.window_maximized = bool(
+            state & Qt.WindowState.WindowMaximized
+        )
+        normal = self.normalGeometry()
+        if not normal.isValid():
+            normal = self.geometry()
+        self.config.window_width = normal.width()
+        self.config.window_height = normal.height()
+        encoded = bytes(self.saveGeometry().toBase64()).decode("ascii")
+        self.config.window_geometry = encoded
+        index = self.tabs.currentIndex()
+        self.config.active_tab = (
+            MAIN_TAB_IDS[index] if 0 <= index < len(MAIN_TAB_IDS) else "sensors"
+        )
+
+    def _restore_window_state(self) -> None:
+        restored = False
+        if self.config.window_geometry:
+            try:
+                geometry = base64.b64decode(
+                    self.config.window_geometry, validate=True
+                )
+                restored = self.restoreGeometry(QByteArray(geometry))
+            except (ValueError, binascii.Error):
+                LOGGER.warning("Ignoring invalid saved window geometry")
+        self.setWindowState(
+            self.windowState()
+            & ~Qt.WindowState.WindowMinimized
+            & ~Qt.WindowState.WindowMaximized
+            & ~Qt.WindowState.WindowFullScreen
+        )
+        if not restored:
+            self.resize(self.config.window_width, self.config.window_height)
+        self._ensure_window_is_visible()
+        if self.config.window_maximized:
+            self.setWindowState(
+                self.windowState() | Qt.WindowState.WindowMaximized
+            )
+
+    def _ensure_window_is_visible(self) -> None:
+        screens = QApplication.screens()
+        if not screens:
+            return
+        frame = self.frameGeometry()
+        title_area = QRect(frame.x(), frame.y(), max(120, frame.width()), 40)
+        if any(
+            (
+                intersection := screen.availableGeometry().intersected(
+                    title_area
+                )
+            ).width()
+            >= 120
+            and intersection.height() >= 20
+            for screen in screens
+        ):
+            return
+        available = QApplication.primaryScreen().availableGeometry()
+        width = min(max(640, self.config.window_width), available.width())
+        height = min(max(480, self.config.window_height), available.height())
+        self.resize(width, height)
+        self.move(
+            available.center().x() - width // 2,
+            available.center().y() - height // 2,
+        )
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self._shutdown_complete:

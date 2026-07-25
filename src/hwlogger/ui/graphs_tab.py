@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -21,10 +21,20 @@ from hwlogger.widgets.live_graph import LiveGraph
 
 
 class GraphsTab(QWidget):
-    def __init__(self, max_lines: int = 8, max_points: int = 36_000) -> None:
+    selection_changed = Signal(list)
+
+    def __init__(
+        self,
+        max_lines: int = 8,
+        max_points: int = 36_000,
+        selected_sensor_ids: list[str] | None = None,
+    ) -> None:
         super().__init__()
         self.max_lines = min(8, max(1, max_lines))
         self.sensors: dict[str, Sensor] = {}
+        self._desired_sensor_ids = list(
+            dict.fromkeys(selected_sensor_ids or [])
+        )[: self.max_lines]
         self.paused = False
         self.selector = QListWidget()
         self.selector.setMinimumWidth(240)
@@ -68,11 +78,6 @@ class GraphsTab(QWidget):
         clear.clicked.connect(self.graph.clear)
 
     def set_sensors(self, sensors: list[Sensor]) -> None:
-        checked = {
-            self.selector.item(index).data(Qt.ItemDataRole.UserRole)
-            for index in range(self.selector.count())
-            if self.selector.item(index).checkState() == Qt.CheckState.Checked
-        }
         self.sensors = {sensor.sensor_id: sensor for sensor in sensors}
         self.selector.blockSignals(True)
         self.selector.clear()
@@ -82,21 +87,46 @@ class GraphsTab(QWidget):
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(
                 Qt.CheckState.Checked
-                if sensor.sensor_id in checked
+                if sensor.sensor_id in self._desired_sensor_ids
                 else Qt.CheckState.Unchecked
             )
             self.selector.addItem(item)
         self.selector.blockSignals(False)
-        self._selection_changed()
+        self._selection_changed(emit=False)
 
     def _selected_ids(self) -> list[str]:
+        checked = set(self._checked_ids())
         return [
-            self.selector.item(index).data(Qt.ItemDataRole.UserRole)
-            for index in range(self.selector.count())
-            if self.selector.item(index).checkState() == Qt.CheckState.Checked
+            sensor_id
+            for sensor_id in self._desired_sensor_ids
+            if sensor_id in checked
         ]
 
-    def _selection_changed(self, changed_item: QListWidgetItem | None = None) -> None:
+    def _selection_changed(
+        self,
+        changed_item: QListWidgetItem | None = None,
+        emit: bool = True,
+    ) -> None:
+        checked_ids = self._checked_ids()
+        known_ids = set(self.sensors)
+        self._desired_sensor_ids = [
+            sensor_id
+            for sensor_id in self._desired_sensor_ids
+            if sensor_id not in known_ids or sensor_id in checked_ids
+        ]
+        for sensor_id in checked_ids:
+            if sensor_id not in self._desired_sensor_ids:
+                self._desired_sensor_ids.append(sensor_id)
+        if len(self._desired_sensor_ids) > self.max_lines:
+            sender = changed_item or self.selector.currentItem()
+            if sender is not None:
+                sensor_id = sender.data(Qt.ItemDataRole.UserRole)
+                self.selector.blockSignals(True)
+                sender.setCheckState(Qt.CheckState.Unchecked)
+                self.selector.blockSignals(False)
+                if sensor_id in self._desired_sensor_ids:
+                    self._desired_sensor_ids.remove(sensor_id)
+            self.warning.setText(f"Можно выбрать не более {self.max_lines} датчиков")
         selected_ids = self._selected_ids()
         if len(selected_ids) > self.max_lines:
             sender = changed_item or self.selector.currentItem()
@@ -120,6 +150,15 @@ class GraphsTab(QWidget):
         if len(selected_ids) <= self.max_lines:
             self.warning.setText("")
         self._update_statistics()
+        if emit:
+            self.selection_changed.emit(list(self._desired_sensor_ids))
+
+    def _checked_ids(self) -> list[str]:
+        return [
+            self.selector.item(index).data(Qt.ItemDataRole.UserRole)
+            for index in range(self.selector.count())
+            if self.selector.item(index).checkState() == Qt.CheckState.Checked
+        ]
 
     def _pause_changed(self, paused: bool) -> None:
         self.paused = paused
