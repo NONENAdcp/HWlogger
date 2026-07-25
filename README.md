@@ -3,7 +3,7 @@
 HWlogger is a read-only Linux hardware sensor monitor, recorder, and log
 analysis application built with Python, PySide6, and pyqtgraph.
 
-> **Platform status:** Linux only. Version 0.1.5 is an early release intended
+> **Platform status:** Linux only. Version 0.1.6 is an early release intended
 > for testing on current x86_64 Linux distributions under Wayland or X11.
 
 ![Sensors tab placeholder](docs/screenshots/sensors.png)
@@ -19,6 +19,10 @@ analysis application built with Python, PySide6, and pyqtgraph.
 - Automatic temperature, power, and fan summaries.
 - Streaming analysis of complete recordings or selected time intervals.
 - Bounded live graphs for up to eight sensors.
+- Independent graph scales for incompatible sensor types and units.
+- Temperature warning colors for current and maximum readings.
+- System tray controls with optional close-to-tray behavior.
+- Restored window, tab, polling interval, and graph selections across restarts.
 - Safe handling of unavailable sensors and optional NVIDIA GPUs.
 - Atomic configuration writes and XDG-compatible application directories.
 - No root privileges required for normal operation.
@@ -45,11 +49,11 @@ controls, or power limits.
 
 ## AppImage installation
 
-Download `HWlogger-0.1.5-x86_64.AppImage` from the Releases page:
+Download `HWlogger-0.1.6-x86_64.AppImage` from the Releases page:
 
 ```bash
-chmod +x HWlogger-0.1.5-x86_64.AppImage
-./HWlogger-0.1.5-x86_64.AppImage
+chmod +x HWlogger-0.1.6-x86_64.AppImage
+./HWlogger-0.1.6-x86_64.AppImage
 ```
 
 The AppImage does not bundle an NVIDIA driver. It uses NVML from the host
@@ -90,7 +94,7 @@ Outputs:
 
 ```text
 dist/HWlogger/
-dist/HWlogger-0.1.5-linux-x86_64.tar.gz
+dist/HWlogger-0.1.6-linux-x86_64.tar.gz
 ```
 
 The executable runs without a system Python or the development virtual
@@ -108,7 +112,7 @@ First build the PyInstaller application, then provide `appimagetool`:
 Output:
 
 ```text
-dist/HWlogger-0.1.5-x86_64.AppImage
+dist/HWlogger-0.1.6-x86_64.AppImage
 ```
 
 Set `APPIMAGETOOL=/path/to/appimagetool` when it is not available in `PATH`.
@@ -141,7 +145,7 @@ hwlog_YYYY-MM-DD_HH-MM-SS_summary.csv
 - Unknown ThinkPad EC sensors are deliberately shown with neutral names.
 - Some NVIDIA metrics are unsupported on specific GPUs or driver versions.
 - NVIDIA fallback coverage is currently more limited than NVML coverage.
-- Mixed graph units share one plot and are accompanied by a warning.
+- The interface is currently available in Russian only.
 
 ## Privacy
 
@@ -155,8 +159,7 @@ HWlogger is a read-only monitor. It does not require root, write to sysfs,
 control fans, modify clocks, or change power limits. Open files and directories
 are passed to the desktop environment using Qt.
 
-Please report security issues privately to the repository owner after the
-placeholder repository URL has been replaced.
+Please report security issues privately to the repository owner.
 
 ## Reporting bugs
 
